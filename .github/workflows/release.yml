@@ -23,26 +23,30 @@ jobs:
           go-version: '1.22'
           cache: true
 
-      - name: Set version env
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
       - name: Build
         run: |
-          go mod tidy
-          CGO_ENABLED=0 go build             -ldflags "-s -w -X github.com/thnkbig/falcoclaw/cmd.Version=$VERSION -X github.com/thnkbig/falcoclaw/cmd.GitCommit=$GITHUB_SHA"             -o falcoclaw .
+          VERSION="${{ github.ref_name }}"
+          CGO_ENABLED=0 go build \
+            -ldflags "-s -w -X github.com/thnkbig/falcoclaw/cmd.Version=${VERSION} -X github.com/thnkbig/falcoclaw/cmd.GitCommit=$GITHUB_SHA" \
+            -o falcoclaw .
 
       - name: Package
         run: |
-          tar -czf falcoclaw_$VERSION_linux_amd64.tar.gz falcoclaw
-          sha256sum falcoclaw_$VERSION_linux_amd64.tar.gz > checksums.txt
-          cat checksums.txt
+          VERSION="${{ github.ref_name }}"
+          FILENAME="falcoclaw_${VERSION}_linux_amd64.tar.gz"
+          tar -czf "$FILENAME" falcoclaw
+          sha256sum "$FILENAME" > checksums.txt
+          echo "Created $FILENAME"
+          ls -la *.tar.gz checksums.txt
 
       - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          tag: ${{ github.ref_name }}
+          name: "FalcoClaw ${{ github.ref_name }}"
           files: |
-            falcoclaw_$VERSION_linux_amd64.tar.gz
+            falcoclaw_*.tar.gz
             checksums.txt
           generate_release_notes: true
         env:
@@ -67,9 +71,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set version env
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -77,10 +78,10 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/thnkbig/falcoclaw:${{ env.VERSION }}
+            ghcr.io/thnkbig/falcoclaw:${{ github.ref_name }}
             ghcr.io/thnkbig/falcoclaw:latest
           build-args: |
-            VERSION=${{ env.VERSION }}
+            VERSION=${{ github.ref_name }}
             COMMIT=$GITHUB_SHA
           cache-from: type=gha
           cache-to: type=gha,mode=max
