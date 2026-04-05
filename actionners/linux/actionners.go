@@ -116,7 +116,8 @@ func Quarantine(event *models.Event, params map[string]interface{}) (string, err
 		}
 	}
 	if immutable {
-		exec.Command("chattr", "+i", destPath).Run()
+		// chattr may fail on some filesystems, ignore error
+		_ = exec.Command("chattr", "+i", destPath).Run()
 	}
 
 	return fmt.Sprintf("quarantined %s → %s (immutable=%v, rule=%s)",

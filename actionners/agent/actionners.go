@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -59,7 +60,9 @@ func Notify(event *models.Event, params map[string]interface{}) (string, error) 
 		return "", fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	resp, err := http.Post(fmt.Sprintf("%v", webhookURL), "application/json", bytes.NewReader(body))
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", fmt.Sprintf("%v", webhookURL), bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("webhook POST failed: %w", err)
 	}
@@ -118,7 +121,9 @@ func Investigate(event *models.Event, params map[string]interface{}) (string, er
 		return "", fmt.Errorf("failed to marshal investigation request: %w", err)
 	}
 
-	resp, err := http.Post(fmt.Sprintf("%v", webhookURL), "application/json", bytes.NewReader(body))
+	httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", fmt.Sprintf("%v", webhookURL), bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("investigation webhook POST failed: %w", err)
 	}
@@ -176,7 +181,9 @@ func TelegramNotify(event *models.Event, params map[string]interface{}) (string,
 	}
 
 	url := fmt.Sprintf("https://api.telegram.org/bot%v/sendMessage", token)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	req, _ := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("telegram POST failed: %w", err)
 	}

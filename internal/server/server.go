@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/thnkbig/falcoclaw/actionners/agent"
 	"github.com/thnkbig/falcoclaw/actionners/linux"
@@ -46,7 +47,8 @@ func Start(cfg *config.Config, rulesFile string) error {
 	addr := fmt.Sprintf("%s:%d", cfg.ListenAddress, cfg.ListenPort)
 	log.Printf("[INFO] FalcoClaw listening on %s", addr)
 
-	return http.ListenAndServe(addr, mux)
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 30 * time.Second}
+	return srv.ListenAndServe()
 }
 
 // handleEvent processes incoming Falco events
@@ -93,7 +95,7 @@ func (e *Engine) handleEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
 // executeAction dispatches to the appropriate actionner
@@ -168,7 +170,7 @@ func (e *Engine) executeAction(event *models.Event, action *rules.Action, dryRun
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"healthy"}`))
+	_, _ = w.Write([]byte(`{"status":"healthy"}`))
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
