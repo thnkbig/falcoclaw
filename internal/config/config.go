@@ -9,15 +9,15 @@ import (
 
 // Config represents the FalcoClaw configuration
 type Config struct {
-	ListenAddress string           `yaml:"listen_address"`
-	ListenPort    int              `yaml:"listen_port"`
-	RulesFile     string           `yaml:"rules_file"`
-	DryRun        bool             `yaml:"dry_run"`
-	LogLevel      string           `yaml:"log_level"`
-	Notifiers     NotifiersConfig  `yaml:"notifiers"`
-	Outputs       OutputsConfig    `yaml:"outputs"`
-	OpenClaw      *OpenClawConfig  `yaml:"openclaw,omitempty"`
-	Agent         *AgentConfig     `yaml:"agent,omitempty"`
+	ListenAddress string          `yaml:"listen_address"`
+	ListenPort    int             `yaml:"listen_port"`
+	RulesFile     string          `yaml:"rules_file"`
+	DryRun        bool            `yaml:"dry_run"`
+	LogLevel      string          `yaml:"log_level"`
+	Notifiers     NotifiersConfig `yaml:"notifiers"`
+	Outputs       OutputsConfig   `yaml:"outputs"`
+	OpenClaw      *OpenClawConfig `yaml:"openclaw,omitempty"`
+	Agent         *AgentConfig    `yaml:"agent,omitempty"`
 }
 
 type NotifiersConfig struct {

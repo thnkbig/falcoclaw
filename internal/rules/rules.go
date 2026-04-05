@@ -11,10 +11,10 @@ import (
 
 // Rule defines a response rule that maps Falco events to actions
 type Rule struct {
-	Name    string  `yaml:"name"`
-	Match   Match   `yaml:"match"`
+	Name    string   `yaml:"name"`
+	Match   Match    `yaml:"match"`
 	Actions []Action `yaml:"actions"`
-	DryRun  bool    `yaml:"dry_run"`
+	DryRun  bool     `yaml:"dry_run"`
 }
 
 // Match defines the criteria for matching Falco events

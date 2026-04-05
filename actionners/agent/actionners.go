@@ -13,7 +13,7 @@ import (
 
 // AlertPayload is sent to agent notification endpoints
 type AlertPayload struct {
-	Source    string                 `json:"source"`
+	Source   string                 `json:"source"`
 	Rule     string                 `json:"rule"`
 	Priority string                 `json:"priority"`
 	Output   string                 `json:"output"`
@@ -42,7 +42,7 @@ func Notify(event *models.Event, params map[string]interface{}) (string, error) 
 	}
 
 	payload := AlertPayload{
-		Source:    "falcoclaw",
+		Source:   "falcoclaw",
 		Rule:     event.Rule,
 		Priority: event.Priority,
 		Output:   event.Output,
@@ -102,7 +102,7 @@ func Investigate(event *models.Event, params map[string]interface{}) (string, er
 
 	req := InvestigationRequest{
 		AlertPayload: AlertPayload{
-			Source:    "falcoclaw",
+			Source:   "falcoclaw",
 			Rule:     event.Rule,
 			Priority: event.Priority,
 			Output:   event.Output,
