@@ -5,17 +5,24 @@ falco:
 
 telegram:
   enabled: true
-  token: "8584274435:AAF0nzTePw2eQIwpDo0JSSWVN8ddaywWOhw"
+  token: "${TELEGRAM_BOT_TOKEN}"
   chatid: "-1003757942684"
   parseMode: "Markdown"
   messageFormat: "【{{ .Priority }}】 {{ .Output }}"
   recipientname: "THNKBIG Security"
   messagethreadid: 2006
 
-stdout:
-  enabled: false
-
+# Forward events to FalcoClaw response engine
 webhook:
+  enabled: true
+  address: "http://localhost:2804"
+  method: "POST"
+  contenttype: "application/json"
+  checkcert: true
+  mutetls: false
+  minimumpriority: "warning"
+
+stdout:
   enabled: false
 
 redis:

@@ -1,0 +1,11 @@
+bin/
+*.exe
+.DS_Store
+.vscode/
+.idea/
+*.sum
+vendor/
+.env
+dist/
+build/
+falcoclaw

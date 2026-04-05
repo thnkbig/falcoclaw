@@ -1,0 +1,191 @@
+# FalcoClaw Response Rules
+# Maps Falco detection events to automated response actions.
+# Modeled on Falco Talon's rule format, targeting Linux primitives.
+#
+# Rule format:
+#   - name: Human-readable name
+#     match:
+#       rules: [list of Falco rule names to match]
+#       priority: Priority filter (e.g., ">=Warning", "Critical")
+#       tags: [tag groups with AND/OR logic]
+#     actions:
+#       - actionner: category:action
+#         parameters: { key: value }
+#         continue: true/false  (continue to next action if true)
+#     dry_run: true/false  (log but don't execute)
+
+# -------------------------------------------------------------------
+# CRITICAL — Immediate automated response
+# -------------------------------------------------------------------
+
+- name: Kill crypto miner
+  match:
+    rules:
+      - "FalcoClaw — Crypto Mining Process"
+  actions:
+    - actionner: linux:kill
+      continue: true
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+- name: Kill credential theft process
+  match:
+    rules:
+      - "FalcoClaw — Skill Accessing Credentials After Install"
+  actions:
+    - actionner: linux:kill
+      continue: true
+    - actionner: linux:quarantine
+      parameters:
+        quarantine_dir: /var/quarantine/falcoclaw
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+- name: Block remote database access
+  match:
+    rules:
+      - "FalcoClaw — OpenBrain Connection from Remote Host"
+  actions:
+    - actionner: linux:block_ip
+      parameters:
+        chain: INPUT
+      continue: true
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+- name: Kill reverse shell
+  match:
+    rules:
+      - "FalcoClaw — Shell Spawned by OpenClaw Agent"
+    tags:
+      - "prompt_injection"
+  actions:
+    - actionner: linux:kill
+      continue: true
+    - actionner: agent:investigate
+      parameters:
+        webhook_url: "http://localhost:3200/falcoclaw/investigate"
+        agent: heimdall
+        question: "A shell was spawned by an OpenClaw agent process. This may indicate prompt injection. Investigate the session that triggered this and identify the source message."
+
+- name: Quarantine malicious skill artifacts
+  match:
+    rules:
+      - "FalcoClaw — Skill Writing to System Paths"
+  actions:
+    - actionner: linux:quarantine
+      parameters:
+        quarantine_dir: /var/quarantine/falcoclaw
+        immutable: true
+      continue: true
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+# -------------------------------------------------------------------
+# WARNING — Alert + investigate, selective auto-response
+# -------------------------------------------------------------------
+
+- name: Block brute force IP
+  match:
+    rules:
+      - "FalcoClaw — WebSocket Connection from Non-Local Origin"
+    priority: ">=Warning"
+  actions:
+    - actionner: linux:block_ip
+      parameters:
+        chain: INPUT
+      continue: true
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+- name: Investigate unauthorized SMTP
+  match:
+    rules:
+      - "FalcoClaw — Agent SMTP Outbound Without Approval"
+  actions:
+    - actionner: agent:investigate
+      parameters:
+        webhook_url: "http://localhost:3200/falcoclaw/investigate"
+        agent: heimdall
+        question: "An agent opened an SMTP connection without approval. This is a repeat of the Karen incident pattern. Identify which agent, which session, and what prompted the outbound email attempt."
+      continue: true
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+- name: Investigate token access
+  match:
+    rules:
+      - "FalcoClaw — Gateway Token File Read"
+  actions:
+    - actionner: agent:investigate
+      parameters:
+        webhook_url: "http://localhost:3200/falcoclaw/investigate"
+        agent: heimdall
+      continue: true
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+- name: Investigate privilege escalation
+  match:
+    rules:
+      - "FalcoClaw — Token Scope Escalation Attempt"
+      - "FalcoClaw — Unauthorized Pair Approval"
+      - "FalcoClaw — Allowlist Mutation from Non-Admin"
+  actions:
+    - actionner: agent:investigate
+      parameters:
+        webhook_url: "http://localhost:3200/falcoclaw/investigate"
+        agent: heimdall
+      continue: true
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+# -------------------------------------------------------------------
+# NOTICE — Log and notify only
+# -------------------------------------------------------------------
+
+- name: Log agent outbound to unknown
+  match:
+    rules:
+      - "FalcoClaw — Agent Outbound to Unknown Domain"
+  actions:
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006
+
+- name: Log npm runtime install
+  match:
+    rules:
+      - "FalcoClaw — npm Install During Runtime"
+  actions:
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: 2006

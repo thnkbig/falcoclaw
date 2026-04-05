@@ -1,0 +1,50 @@
+# FalcoClaw Configuration
+# Response Engine for Linux — https://falcoclaw.com
+#
+# FalcoClaw listens for Falco events via webhook and executes
+# automated response actions defined in the rules file.
+
+# Server settings
+listen_address: "0.0.0.0"
+listen_port: 2804
+rules_file: "/etc/falcoclaw/rules.yaml"
+log_level: "info"
+
+# Set to true to log actions without executing them
+dry_run: false
+
+# Notifiers — where to send action results
+notifiers:
+  telegram:
+    token: "${TELEGRAM_BOT_TOKEN}"
+    chat_id: "-1003757942684"
+    forum_topic_id: "2006"
+  # slack:
+  #   webhook_url: "https://hooks.slack.com/services/XXX"
+  #   channel: "#security-alerts"
+  #   username: "FalcoClaw"
+  # webhook:
+  #   address: "http://localhost:8080/falcoclaw/notify"
+
+# Outputs — where to store action audit logs
+outputs:
+  file:
+    path: "/var/log/falcoclaw/actions.jsonl"
+  postgresql:
+    host: "localhost"
+    port: 5433
+    database: "agent_memory"
+    user: "postgres"
+    password: ""
+    table: "falcoclaw_alerts"
+
+# OpenClaw integration (optional)
+openclaw:
+  binary_path: "/usr/local/bin/openclaw"
+  config_dir: "/root/.openclaw"
+
+# Agent integration for investigation dispatch
+agent:
+  type: "openclaw"  # "openclaw" or "hermes"
+  webhook_url: "http://localhost:3200/falcoclaw/investigate"
+  investigate_agent: "heimdall"

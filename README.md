@@ -1,167 +1,238 @@
-# FalcoClaw 🦅🔒
+# FalcoClaw 🦅
 
-**Runtime security for AI agent systems — built for [OpenClaw](https://github.com/openclaw/openclaw).**
+**Falco Talon for Linux — the response engine for non-Kubernetes workloads.**
 
-FalcoClaw deploys [Falco](https://falco.org) with purpose-built rules that detect privilege escalation, unauthorized agent actions, prompt injection artifacts, credential access, and supply chain attacks targeting self-hosted AI agent gateways.
+[![Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> **Why this matters:** In 2026 alone, OpenClaw has seen 6+ CVEs in 6 weeks (CVE-2026-32922 CVSS 9.9, CVE-2026-33579 CVSS 9.8, and more), 1,000+ malicious ClawHub skills, cross-site WebSocket hijacking, and 63% of 135K+ public instances running with zero authentication. FalcoClaw gives you kernel-level eyes on what your agents are actually doing.
+FalcoClaw extends [Falco](https://falco.org)'s detection capabilities with automated response actions for bare metal servers, VMs, and non-Kubernetes containers. Where [Falco Talon](https://github.com/falcosecurity/falco-talon) covers Kubernetes, FalcoClaw covers everything else.
 
----
-
-## What FalcoClaw Detects
-
-| Threat Category | Detection |
-|---|---|
-| **Privilege Escalation** | Token rotation scope widening, `/pair approve` without admin scope, synthetic `operator.admin` fallback |
-| **Unauthorized Agent Actions** | Outbound SMTP/HTTP from agent processes without approval, unexpected file writes to MEMORY.md / SHARED-STATE.md |
-| **Credential Access** | Reads of `.openclaw/` config, gateway tokens, API keys, database credentials |
-| **Supply Chain / ClawHub** | Skill installation spawning unexpected child processes, network callbacks to unknown domains |
-| **Prompt Injection Artifacts** | Agent processes writing to config files, modifying allowlists, or executing shell commands after ingesting external content |
-| **Lateral Movement** | WebSocket connections from unexpected origins, mDNS broadcast data leakage, node pairing from non-local sources |
-| **Data Exfiltration** | Large outbound transfers from agent memory stores (PostgreSQL/pgvector, MEMORY.md files) |
-| **OpenBrain Protection** | Unauthorized connections to PostgreSQL (port 8888), pg_dump/pg_dumpall invocations, pgvector index tampering |
-
----
-
-## Quick Start
-
-### Option 1: Host Install (Debian/Ubuntu — e.g., DigitalOcean Droplet)
-
-```bash
-git clone https://github.com/thnkbig/falcoclaw.git
-cd falcoclaw
-sudo ./scripts/install.sh --mode host
+```
+Falco (detection)  ──►  Falco Talon (Kubernetes response)
+                   ──►  FalcoClaw  (Linux response)
 ```
 
-### Option 2: Docker (alongside OpenClaw)
-
-```bash
-git clone https://github.com/thnkbig/falcoclaw.git
-cd falcoclaw
-./scripts/install.sh --mode docker
-```
-
-Both modes deploy:
-- Falco with eBPF probe (no kernel module required)
-- FalcoClaw custom rules (`rules/`)
-- Falcosidekick for alert routing → Telegram + OpenBrain (PostgreSQL)
-
----
-
-## Configuration
-
-Copy and edit the config:
-
-```bash
-cp config/falcoclaw.yaml.example config/falcoclaw.yaml
-```
-
-Key settings:
-
-```yaml
-# config/falcoclaw.yaml
-openclaw:
-  gateway_pid_file: /var/run/openclaw-gateway.pid
-  config_dir: ~/.openclaw
-  agent_processes:
-    - openclaw
-    - node
-  memory_paths:
-    - /path/to/MEMORY.md
-    - /path/to/SHARED-STATE.md
-    - /path/to/HEARTBEAT.md
-
-openbrain:
-  host: localhost
-  port: 8888
-  db: openbrain
-  alerts_table: falcoclaw_alerts
-
-alerts:
-  telegram:
-    enabled: true
-    webhook_url: "https://api.telegram.org/bot<TOKEN>/sendMessage"
-    chat_id: "<SECURITY_ALERTS_TOPIC_ID>"
-    forum_topic_id: "<TOPIC_ID>"
-  openbrain:
-    enabled: true
-    # Alerts stored with pgvector embeddings for agent-queryable security context
-```
+With simple YAML rules, FalcoClaw reacts to Falco events in milliseconds — killing processes, blocking IPs, quarantining files, and dispatching investigations to AI agents.
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│                  Linux Host / VM                  │
-│                                                   │
-│  ┌─────────────┐    ┌──────────────────────────┐ │
-│  │   OpenClaw   │    │     Falco (eBPF)         │ │
-│  │   Gateway    │    │  ┌────────────────────┐  │ │
-│  │             ◄──────┤  FalcoClaw Rules     │  │ │
-│  │  Agents:     │    │  │ • priv_escalation  │  │ │
-│  │  • Max       │    │  │ • agent_behavior   │  │ │
-│  │  • Karen     │    │  │ • credential_access│  │ │
-│  │  • Heimdall  │    │  │ • supply_chain     │  │ │
-│  │  • ...       │    │  │ • data_exfil       │  │ │
-│  └──────┬───────┘    │  └────────────────────┘  │ │
-│         │            └────────────┬─────────────┘ │
-│  ┌──────┴───────┐                 │               │
-│  │  OpenBrain   │    ┌────────────┴─────────────┐ │
-│  │  PostgreSQL  │◄───┤    Falcosidekick         │ │
-│  │  + pgvector  │    │  ┌─────┐  ┌───────────┐  │ │
-│  │  port 8888   │    │  │ TG  │  │ PostgreSQL│  │ │
-│  └──────────────┘    │  │ Bot │  │  Insert   │  │ │
-│                      │  └──┬──┘  └─────┬─────┘  │ │
-│                      └─────┼───────────┼────────┘ │
-└────────────────────────────┼───────────┼──────────┘
-                             │           │
-                    ┌────────┴──┐   ┌────┴─────────┐
-                    │ Telegram  │   │  OpenBrain    │
-                    │ #security │   │  alerts table │
-                    │ -alerts   │   │  + pgvector   │
-                    └───────────┘   └──────────────┘
+┌──────────┐     ┌───────────────┐     ┌─────────────┐
+│  Falco   ├────►│ Falcosidekick ├────►│  FalcoClaw  │
+│  (eBPF)  │     │               │     │  (engine)   │
+└──────────┘     └───────────────┘     └──────┬──────┘
+                                              │
+                    ┌─────────────────────────┼─────────────────────────┐
+                    │                         │                         │
+              ┌─────▼─────┐           ┌───────▼───────┐         ┌──────▼──────┐
+              │   linux:   │           │   openclaw:   │         │   agent:    │
+              │   kill     │           │   disable_    │         │   notify    │
+              │   block_ip │           │   skill       │         │   investi-  │
+              │   quaran-  │           │   revoke_     │         │   gate      │
+              │   tine     │           │   token       │         │   telegram  │
+              │   disable_ │           │   restart     │         │             │
+              │   user     │           │   disable_    │         │             │
+              │   stop_    │           │   agent       │         │             │
+              │   service  │           │               │         │             │
+              │   firewall │           │               │         │             │
+              │   script   │           │               │         │             │
+              └────────────┘           └───────────────┘         └─────────────┘
+```
+
+FalcoClaw receives Falco events directly or via Falcosidekick, matches them against response rules, and executes actions through pluggable **actionners** — the same concept as Falco Talon, targeting Linux primitives instead of Kubernetes API calls.
+
+---
+
+## Quick Start
+
+### Build from source
+
+```bash
+git clone https://github.com/thnkbig/falcoclaw.git
+cd falcoclaw
+make build
+```
+
+### Install
+
+```bash
+sudo make install
+# Installs binary, creates /etc/falcoclaw/ with config and rules
+
+# Optional: install as systemd service
+sudo make service-install
+```
+
+### Docker
+
+```bash
+make docker
+docker run -d --name falcoclaw \
+  --privileged \
+  --net=host \
+  -v /etc/falcoclaw:/etc/falcoclaw:ro \
+  -v /var/quarantine:/var/quarantine \
+  falcoclaw:latest
+```
+
+### Configure Falcosidekick
+
+Point Falcosidekick at FalcoClaw:
+
+```yaml
+# In falcosidekick config
+webhook:
+  address: http://localhost:2804
+  minimumpriority: warning
+```
+
+Or pass directly from Falco:
+
+```yaml
+# In falco.yaml
+http_output:
+  enabled: true
+  url: http://localhost:2804
 ```
 
 ---
 
-## Rule Sets
+## Actionners
 
-| File | Purpose |
-|---|---|
-| `rules/falcoclaw_base.yaml` | Core OpenClaw process monitoring |
-| `rules/falcoclaw_agents.yaml` | Agent-specific behavioral rules |
-| `rules/falcoclaw_openbrain.yaml` | PostgreSQL/pgvector protection |
-| `rules/falcoclaw_network.yaml` | Network egress and WebSocket monitoring |
-| `rules/falcoclaw_supply_chain.yaml` | ClawHub skill installation monitoring |
+| Category | Actionner | Description |
+|---|---|---|
+| **linux** | `linux:kill` | Kill a process by PID (protects PID 1) |
+| | `linux:block_ip` | Block IP via iptables with audit comment |
+| | `linux:quarantine` | Move file to quarantine + immutable flag |
+| | `linux:disable_user` | Lock user account (protects root) |
+| | `linux:stop_service` | Stop systemd service (protects sshd, dbus) |
+| | `linux:firewall` | Apply custom iptables/nftables rules |
+| | `linux:script` | Execute response script with event context |
+| **openclaw** | `openclaw:disable_skill` | Disable an OpenClaw skill |
+| | `openclaw:revoke_token` | Rotate gateway token |
+| | `openclaw:restart` | Restart OpenClaw gateway |
+| | `openclaw:disable_agent` | Disable a specific agent |
+| **agent** | `agent:notify` | Send alert via webhook |
+| | `agent:investigate` | Dispatch to AI agent for analysis |
+| | `agent:telegram` | Send alert to Telegram chat/topic |
+
+---
+
+## Response Rules
+
+Rules map Falco detection events to automated response actions:
+
+```yaml
+- name: Kill crypto miner
+  match:
+    rules:
+      - "FalcoClaw — Crypto Mining Process"
+  actions:
+    - actionner: linux:kill
+      continue: true
+    - actionner: agent:telegram
+      parameters:
+        token: "${TELEGRAM_BOT_TOKEN}"
+        chat_id: "${TELEGRAM_CHAT_ID}"
+        topic_id: "${TELEGRAM_SECURITY_TOPIC_ID}"
+
+- name: Investigate unauthorized SMTP
+  match:
+    rules:
+      - "FalcoClaw — Agent SMTP Outbound Without Approval"
+  actions:
+    - actionner: agent:investigate
+      parameters:
+        webhook_url: "http://localhost:3200/falcoclaw/investigate"
+        agent: heimdall
+        question: "An agent opened an SMTP connection without approval. Investigate."
+```
+
+### Rule matching
+
+- `rules`: list of Falco rule names (OR logic)
+- `priority`: severity filter with operators (`>=Warning`, `Critical`, `<Error`)
+- `tags`: tag groups with AND within group, OR across groups
+
+### Action flow
+
+Actions execute sequentially. Set `continue: true` to run the next action regardless of success. Set `dry_run: true` to log without executing.
+
+---
+
+## Safety Guards
+
+Every actionner has built-in safety checks:
+
+- `linux:kill` — refuses to kill PID 1 or the FalcoClaw process itself
+- `linux:block_ip` — refuses to block localhost (127.0.0.1, ::1)
+- `linux:disable_user` — refuses to lock root
+- `linux:stop_service` — refuses to stop sshd, systemd, dbus, networkd, resolved
+- `openclaw:disable_agent` — refuses to disable the main agent
+- `dry_run` mode at global, rule, or action level for safe testing
 
 ---
 
 ## Agent Integration
 
-FalcoClaw is designed to feed into your agent hierarchy:
+FalcoClaw integrates with AI agent frameworks as the intelligent investigation layer:
 
-- **Heimdall** (`#intelligence`) — consumes security alerts as threat intelligence
-- **Max** (`#mission-control`) — receives escalations for agent containment decisions
-- **Pepper** (`#coordination`) — coordinates cross-agent response to incidents
+### OpenClaw
 
-Alerts are stored in OpenBrain with pgvector embeddings, so any agent can query:
-*"Have there been any suspicious outbound connections in the last 24 hours?"*
+```bash
+# Install the FalcoClaw query plugin
+openclaw plugins install @thnkbig/falcoclaw
+```
+
+Agents query FalcoClaw alert history from PostgreSQL. See `plugins/openclaw/`.
+
+### Hermes Agent
+
+```bash
+# Install the FalcoClaw plugin
+cp plugins/hermes/falcoclaw_plugin.py ~/.hermes/plugins/
+```
+
+See `plugins/hermes/`.
+
+### Investigation flow
+
+```
+Falco detects anomaly
+  → FalcoClaw executes immediate response (kill, block, quarantine)
+  → FalcoClaw dispatches investigation to agent (Heimdall)
+  → Agent analyzes context, queries alert history, recommends follow-up
+  → Agent escalates to Max → Rudy if needed
+```
+
+Automated response is deterministic (no LLM in the loop). Investigation is intelligent (LLM-powered). Clean separation.
 
 ---
 
-## Addressing OpenClaw's Known Vulnerabilities
+## CLI
 
-| CVE / Threat | How FalcoClaw Detects It |
-|---|---|
-| CVE-2026-32922 (token scope escalation, CVSS 9.9) | Detects `device.token.rotate` API calls that result in scope widening |
-| CVE-2026-33579 (`/pair approve` priv esc, CVSS 9.8) | Monitors pairing approval events from non-admin processes |
-| CVE-2026-23112 (allowlist bypass) | Watches for `/allowlist` mutations from `operator.write` scoped tokens |
-| ClawHavoc malicious skills (341+ AMOS infostealers) | Detects skill-spawned processes making outbound connections or accessing credentials |
-| Cross-site WebSocket hijacking (ClawBleed) | Monitors WebSocket connections from non-local origins to gateway port |
-| mDNS data leakage | Alerts on mDNS broadcasts containing filesystem paths or SSH details |
-| Prompt injection → shell exec | Detects shell spawns that trace back to agent message processing |
+```bash
+falcoclaw server                    # Start the response engine
+falcoclaw check --rules rules.yaml  # Validate response rules
+falcoclaw actionners                # List available actionners
+falcoclaw version                   # Print version
+```
+
+---
+
+## vs. Falco Talon
+
+| | Falco Talon | FalcoClaw |
+|---|---|---|
+| **Target** | Kubernetes | Linux (bare metal, VMs, containers) |
+| **Actionners** | `kubernetes:terminate`, `kubernetes:networkpolicy`, etc. | `linux:kill`, `linux:block_ip`, `linux:quarantine`, etc. |
+| **Agent integration** | None | OpenClaw + Hermes plugins |
+| **Response primitives** | K8s API (pods, labels, netpol) | Linux syscalls (kill, iptables, chattr, usermod) |
+| **Rule format** | YAML (Talon format) | YAML (compatible with Talon format) |
+| **Language** | Go | Go |
+
+FalcoClaw is not a fork of Falco Talon — it's a complementary project that fills the gap for non-Kubernetes workloads.
 
 ---
 
@@ -178,3 +249,5 @@ Apache 2.0 — See [LICENSE](LICENSE).
 ---
 
 **Built by [THNKBIG Technologies](https://thnkbig.com)** — Give Engineers Their Time Back.
+
+[falcoclaw.com](https://falcoclaw.com) · [@falcoclaw](https://x.com/falcoclaw)
