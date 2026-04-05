@@ -41,3 +41,12 @@
 # - rule: FalcoClaw — Shell Spawned by OpenClaw Agent
 #   append: true
 #   condition: and not (proc.pname = openclaw-gateway)
+
+# Allow OpenClaw CLI commands that legitimately read .env during normal operation
+- rule: FalcoClaw — Skill Accessing Credentials After Install
+  append: true
+  condition: >
+    and not (proc.cmdline contains "openclaw sessions list" or
+             proc.cmdline contains "openclaw config get" or
+             proc.cmdline contains "openclaw doctor" or
+             proc.cmdline contains "openclaw security audit")
