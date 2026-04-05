@@ -1,0 +1,135 @@
+# FalcoClaw Configuration — THNKBIG Production
+# Updated 2026-04-04
+
+openclaw:
+  # Path to OpenClaw gateway PID file (host install)
+  gateway_pid_file: /var/run/openclaw-gateway.pid
+
+  # OpenClaw config directory
+  config_dir: /root/.openclaw
+
+  # Process names that belong to OpenClaw (used in rule macros)
+  agent_processes:
+    - openclaw
+    - node
+
+  # Agent workspace base directory
+  workspace_dir: /root/.openclaw/workspace/agents
+
+  # Known agent names (maps to Telegram forum topics)
+  agents:
+    - name: max
+      topic: mission-control
+      role: chief-of-staff
+    - name: pepper
+      topic: coordination
+      role: coo
+    - name: karen
+      topic: business-email
+      role: communications
+    - name: echo
+      topic: content-social
+      role: content
+    - name: tony
+      topic: revenue-deals
+      role: bdr
+    - name: heimdall
+      topic: intelligence
+      role: market-intelligence
+    - name: vision
+      topic: seo
+      role: seo
+    - name: reed
+      topic: technical
+      role: platform-engineer
+    - name: jarvis
+      topic: voice-phone
+      role: client-concierge
+    - name: pamela
+      topic: five9
+      role: engagement-lead
+    - name: cron
+      topic: cron-updates
+      role: scheduler
+    - name: oracle
+      topic: stock-research
+      role: stock-research
+
+  # Agent memory files to monitor for integrity
+  memory_paths:
+    - /root/.openclaw/workspace/agents/*/MEMORY.md
+    - /root/.openclaw/workspace/agents/*/HEARTBEAT.md
+    - /root/.openclaw/workspace/agents/*/memory/*.md
+
+# OpenBrain (PostgreSQL 16 + pgvector) — THNKBIG production
+openbrain:
+  host: localhost
+  port: 5433
+  database: agent_memory
+  user: agent_api
+  password: agent_api_secure_pass_2026
+  alerts_table: falcoclaw_alerts
+  # Enable pgvector embeddings for semantic alert search
+  embeddings_enabled: true
+  embedding_model: text-embedding-3-small
+  embedding_dimensions: 1536
+
+# Alert routing
+alerts:
+  # Telegram — real-time alerts to agent forum
+  telegram:
+    enabled: true
+    bot_token: "${TELEGRAM_BOT_TOKEN}"
+    # Forum group chat ID
+    chat_id: "-1003757942684"
+    # #security-alerts topic ID
+    forum_topic_id: "2006"
+    # Minimum severity to alert (notice, warning, critical)
+    min_priority: warning
+
+  # OpenBrain — durable storage with pgvector
+  openbrain:
+    enabled: true
+    # Store all events (including notice) for audit trail
+    min_priority: notice
+
+  # Webhook — optional custom endpoint
+  webhook:
+    enabled: false
+    url: ""
+    min_priority: warning
+
+# Alert escalation rules
+escalation:
+  # Route CRITICAL alerts to Max in #mission-control
+  critical:
+    target_agent: max
+    target_topic: mission-control
+    auto_escalate: true
+
+  # Route WARNING alerts to Heimdall in #intelligence
+  warning:
+    target_agent: heimdall
+    target_topic: intelligence
+    auto_escalate: false
+
+  # Route supply_chain tagged alerts to Reed in #technical
+  supply_chain:
+    target_agent: reed
+    target_topic: technical
+    auto_escalate: true
+
+# Baseline profiling
+baseline:
+  # Run baseline profiling on first install to learn normal behavior
+  auto_profile: true
+  profile_duration_hours: 24
+  # Allowlisted outbound destinations (add your known-good endpoints)
+  allowed_destinations:
+    - api.telegram.org
+    - api.openai.com
+    - api.anthropic.com
+    - api.minimax.chat
+    - registry.npmjs.org
+    - github.com
+    - objects.githubusercontent.com

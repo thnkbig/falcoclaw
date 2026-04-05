@@ -1,0 +1,131 @@
+# FalcoClaw OpenBrain Rules
+# Protects PostgreSQL 16 + pgvector (port 8888)
+# Detects unauthorized access, data exfiltration, and index tampering
+
+##############################################################################
+# Macros
+##############################################################################
+
+- macro: openbrain_port
+  condition: (fd.sport = 8888 or fd.rport = 8888)
+
+- macro: postgres_process
+  condition: (proc.name in (postgres, psql, pg_dump, pg_dumpall, pg_restore))
+
+- macro: openbrain_data_dir
+  condition: >
+    (fd.name startswith "/var/lib/postgresql/" or
+     fd.name startswith "/data/openbrain/")
+
+##############################################################################
+# Rules — Unauthorized Database Access
+##############################################################################
+
+- rule: FalcoClaw — OpenBrain Connection from Non-Agent Process
+  desc: >
+    Only OpenClaw agent processes and authorized tools should connect
+    to OpenBrain (PostgreSQL on port 8888). Connections from unknown
+    processes may indicate credential theft or lateral movement.
+  condition: >
+    outbound and fd.rport = 8888 and
+    not proc.name in (openclaw, node, psql, pgAdmin4, pg_isready) and
+    not proc.pname in (openclaw, node)
+  output: >
+    HIGH: Non-agent process connecting to OpenBrain
+    (process=%proc.name dest=%fd.sip:%fd.rport pid=%proc.pid
+     user=%user.name parent=%proc.pname command=%proc.cmdline)
+  priority: WARNING
+  tags: [falcoclaw, openbrain, unauthorized_access]
+
+- rule: FalcoClaw — OpenBrain Connection from Remote Host
+  desc: >
+    OpenBrain should only accept connections from localhost.
+    Remote connections indicate either misconfigured pg_hba.conf
+    or active exploitation.
+  condition: >
+    fd.sport = 8888 and
+    fd.sip != "127.0.0.1" and
+    fd.sip != "::1" and
+    fd.sip != "172.17.0.1"  
+  output: >
+    CRITICAL: Remote connection to OpenBrain detected
+    (source=%fd.sip:%fd.sport dest_port=%fd.rport
+     process=%proc.name pid=%proc.pid)
+  priority: CRITICAL
+  tags: [falcoclaw, openbrain, remote_access]
+
+##############################################################################
+# Rules — Data Exfiltration
+##############################################################################
+
+- rule: FalcoClaw — pg_dump or pg_dumpall Executed
+  desc: >
+    Database dump utilities running against OpenBrain may indicate
+    data exfiltration. Only authorized backup processes should run
+    these tools. Ref: pg_dump I/O spikes previously caused AWX
+    auth_user table corruption in similar environments.
+  condition: >
+    spawned_process and
+    proc.name in (pg_dump, pg_dumpall) and
+    proc.cmdline contains "8888"
+  output: >
+    CRITICAL: Database dump targeting OpenBrain
+    (user=%user.name command=%proc.cmdline pid=%proc.pid
+     parent=%proc.pname)
+  priority: CRITICAL
+  tags: [falcoclaw, openbrain, data_exfil, pg_dump]
+
+- rule: FalcoClaw — Large Data Read from OpenBrain
+  desc: >
+    Postgres processes serving unusually large result sets from
+    OpenBrain. May indicate bulk data extraction via SQL queries
+    targeting agent memory vectors.
+  condition: >
+    postgres_process and
+    evt.type = write and
+    evt.arg.res > 1048576 and  
+    openbrain_port
+  output: >
+    WARNING: Large data transfer from OpenBrain
+    (process=%proc.name bytes=%evt.arg.res pid=%proc.pid
+     user=%user.name)
+  priority: WARNING
+  tags: [falcoclaw, openbrain, data_exfil, bulk_read]
+
+##############################################################################
+# Rules — pgvector Integrity
+##############################################################################
+
+- rule: FalcoClaw — Direct pgvector Index File Access
+  desc: >
+    Direct filesystem access to pgvector index files outside
+    the PostgreSQL process. May indicate index tampering or
+    data poisoning attacks against agent memory embeddings.
+  condition: >
+    (open_read or open_write) and
+    openbrain_data_dir and
+    fd.name contains "vector" and
+    not postgres_process
+  output: >
+    CRITICAL: Direct access to pgvector index files
+    (process=%proc.name file=%fd.name pid=%proc.pid
+     user=%user.name operation=%evt.type)
+  priority: CRITICAL
+  tags: [falcoclaw, openbrain, pgvector_tampering]
+
+- rule: FalcoClaw — PostgreSQL Config Modified
+  desc: >
+    Changes to pg_hba.conf, postgresql.conf, or similar config files
+    may weaken authentication or expose OpenBrain to remote access.
+  condition: >
+    open_write and
+    (fd.name contains "pg_hba.conf" or
+     fd.name contains "postgresql.conf" or
+     fd.name contains "pg_ident.conf") and
+    not postgres_process
+  output: >
+    CRITICAL: PostgreSQL config file modified
+    (process=%proc.name file=%fd.name pid=%proc.pid
+     user=%user.name)
+  priority: CRITICAL
+  tags: [falcoclaw, openbrain, config_tampering]

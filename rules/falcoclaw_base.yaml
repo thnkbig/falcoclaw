@@ -127,7 +127,8 @@
     May indicate token exfiltration.
   condition: >
     open_read and sensitive_token_files and
-    not openclaw_process
+    not openclaw_process and
+    not proc.name in (pg_isready, psql)
   output: >
     CRITICAL: Gateway token file accessed by external process
     (user=%user.name process=%proc.name file=%fd.name pid=%proc.pid
@@ -193,16 +194,16 @@
 
 - rule: FalcoClaw — WebSocket Connection from Non-Local Origin
   desc: >
-    Detects inbound connections to OpenClaw gateway ports from
+    Detects connections to OpenClaw gateway ports from
     non-localhost sources. May indicate cross-site WebSocket hijacking
     (ClawBleed / CVE-2026-25253).
   condition: >
-    inbound and openclaw_gateway_port and
+    openclaw_gateway_port and
     fd.sip != "127.0.0.1" and
     fd.sip != "::1"
   output: >
     HIGH: Non-local connection to OpenClaw gateway
-    (source=%fd.sip:%fd.sport dest_port=%fd.dport
+    (source=%fd.sip:%fd.sport dest_port=%fd.rport
      process=%proc.name pid=%proc.pid)
   priority: WARNING
   tags: [falcoclaw, network, websocket_hijack, cve-2026-25253]

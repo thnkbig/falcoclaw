@@ -1,0 +1,132 @@
+# FalcoClaw Network & Supply Chain Rules
+# Monitors egress traffic, ClawHub skill installs, and C2 patterns
+
+##############################################################################
+# Rules — Network Egress
+##############################################################################
+
+- rule: FalcoClaw — Outbound Connection to Rare Port
+  desc: >
+    OpenClaw agent processes connecting to non-standard ports.
+    Legitimate traffic uses 443 (HTTPS), 5432 (PostgreSQL),
+    8888 (OpenBrain). Other ports warrant investigation.
+  condition: >
+    outbound and
+    proc.pname in (openclaw, node) and
+    not fd.sport in (80, 443, 5432, 8888, 53, 8080, 3000, 3001) and
+    not fd.sip = "127.0.0.1"
+  output: >
+    WARNING: Agent egress on unusual port
+    (process=%proc.name dest=%fd.sip:%fd.sport pid=%proc.pid
+     command=%proc.cmdline)
+  priority: WARNING
+  tags: [falcoclaw, network, unusual_port]
+
+- rule: FalcoClaw — DNS Query for Suspicious TLD
+  desc: >
+    Agent processes resolving domains with TLDs commonly used
+    by C2 infrastructure (.xyz, .top, .icu, .buzz, .tk, .ml).
+  condition: >
+    outbound and fd.sport = 53 and
+    proc.pname in (openclaw, node) and
+    (fd.name contains ".xyz" or
+     fd.name contains ".top" or
+     fd.name contains ".icu" or
+     fd.name contains ".buzz" or
+     fd.name contains ".tk" or
+     fd.name contains ".ml")
+  output: >
+    HIGH: Agent DNS query to suspicious TLD
+    (process=%proc.name query=%fd.name pid=%proc.pid)
+  priority: WARNING
+  tags: [falcoclaw, network, c2_indicator]
+
+##############################################################################
+# Rules — Supply Chain (ClawHub Skills)
+##############################################################################
+
+- rule: FalcoClaw — ClawHub Skill Download
+  desc: >
+    Detects skill downloads from ClawHub registry. Not inherently
+    malicious but should be logged for audit. Ref: ClawHavoc
+    campaign found 341+ malicious skills in ClawHub.
+  condition: >
+    outbound and
+    proc.pname in (openclaw, node) and
+    (fd.sip.name contains "clawhub" or
+     fd.sip.name contains "registry.openclaw" or
+     proc.cmdline contains "clawhub" or
+     proc.cmdline contains "skill install")
+  output: >
+    NOTICE: ClawHub skill download detected
+    (process=%proc.name dest=%fd.sip.name command=%proc.cmdline
+     pid=%proc.pid user=%user.name)
+  priority: NOTICE
+  tags: [falcoclaw, supply_chain, clawhub_download]
+
+- rule: FalcoClaw — Skill Accessing Credentials After Install
+  desc: >
+    A recently installed skill process reading credential files,
+    environment variables, or token stores. This is the primary
+    attack pattern from the ClawHavoc AMOS infostealer campaign.
+  condition: >
+    open_read and
+    (fd.name contains ".env" or
+     fd.name contains ".ssh/" or
+     fd.name contains ".gnupg/" or
+     fd.name contains ".aws/" or
+     fd.name contains "credentials" or
+     fd.name contains "gateway.token" or
+     fd.name contains ".npmrc" or
+     fd.name contains ".docker/config.json") and
+    proc.pname in (openclaw, node) and
+    not proc.name = "openclaw"
+  output: >
+    CRITICAL: Possible credential theft by skill/plugin
+    (process=%proc.name file=%fd.name pid=%proc.pid
+     parent=%proc.pname command=%proc.cmdline)
+  priority: CRITICAL
+  tags: [falcoclaw, supply_chain, credential_theft, clawhavoc]
+
+- rule: FalcoClaw — Skill Writing to System Paths
+  desc: >
+    Skills writing to system directories (/usr, /etc, /var/spool,
+    cron directories) may indicate persistence mechanisms from
+    malicious ClawHub skills.
+  condition: >
+    open_write and
+    proc.pname in (openclaw, node) and
+    (fd.name startswith "/etc/cron" or
+     fd.name startswith "/var/spool/cron" or
+     fd.name startswith "/usr/local/bin" or
+     fd.name startswith "/etc/systemd" or
+     fd.name contains ".bashrc" or
+     fd.name contains ".profile" or
+     fd.name contains ".zshrc")
+  output: >
+    CRITICAL: Skill writing to system persistence path
+    (process=%proc.name file=%fd.name pid=%proc.pid
+     parent=%proc.pname command=%proc.cmdline)
+  priority: CRITICAL
+  tags: [falcoclaw, supply_chain, persistence, malware]
+
+##############################################################################
+# Rules — Crypto Mining Detection
+##############################################################################
+
+- rule: FalcoClaw — Crypto Mining Process
+  desc: >
+    Detects known crypto mining processes or stratum protocol
+    connections from the OpenClaw host.
+  condition: >
+    spawned_process and
+    (proc.name in (xmrig, minerd, cpuminer, ethminer, cgminer, bfgminer) or
+     proc.cmdline contains "stratum+" or
+     proc.cmdline contains "pool.minexmr" or
+     proc.cmdline contains "nicehash")
+  output: >
+    CRITICAL: Crypto mining detected
+    (process=%proc.name command=%proc.cmdline pid=%proc.pid
+     user=%user.name parent=%proc.pname)
+  priority: CRITICAL
+  tags: [falcoclaw, cryptomining]

@@ -1,0 +1,43 @@
+# FalcoClaw Host Tuning Overrides
+# https://github.com/thnkbig/falcoclaw
+#
+# This file contains overrides for upstream Falco rules to reduce
+# false positives in OpenClaw environments. Uses Falco's append
+# mechanism to extend existing rules without replacing them.
+#
+# IMPORTANT: Do NOT re-declare a rule by name without all required
+# fields (condition, output, priority). Falco last-writer-wins on
+# rule names — an incomplete redeclaration kills the entire file.
+#
+# Use `append: true` to add exceptions to upstream rules.
+
+##############################################################################
+# Upstream Rule Tuning — Reduce False Positives
+##############################################################################
+
+# Suppress pg_isready noise from Docker healthchecks against PostgreSQL
+- rule: Read sensitive file untrusted
+  append: true
+  condition: and not proc.name in (pg_isready)
+
+# OpenClaw gateway legitimately reads /etc/resolv.conf, /etc/hosts
+- rule: Read sensitive file untrusted
+  append: true
+  condition: and not (openclaw_process and fd.name in (/etc/resolv.conf, /etc/hosts, /etc/nsswitch.conf))
+
+# Node.js processes read /etc/ssl/openssl.cnf during TLS setup
+- rule: Read sensitive file untrusted
+  append: true
+  condition: and not (proc.name = node and fd.name = /etc/ssl/openssl.cnf)
+
+##############################################################################
+# FalcoClaw Rule Tuning — Reduce Self-Noise
+##############################################################################
+
+# The OpenClaw gateway legitimately spawns node processes — don't alert
+# on every shell spawn if it's the gateway starting agent sessions.
+# Uncomment if you get too much noise from the shell spawn rule:
+#
+# - rule: FalcoClaw — Shell Spawned by OpenClaw Agent
+#   append: true
+#   condition: and not (proc.pname = openclaw-gateway)

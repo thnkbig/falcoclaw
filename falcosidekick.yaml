@@ -1,0 +1,22 @@
+# FalcoSidekick config for THNKBIG
+listenport: 2801
+falco:
+  watchFiles: false
+
+telegram:
+  enabled: true
+  token: "8584274435:AAF0nzTePw2eQIwpDo0JSSWVN8ddaywWOhw"
+  chatid: "-1003757942684"
+  parseMode: "Markdown"
+  messageFormat: "【{{ .Priority }}】 {{ .Output }}"
+  recipientname: "THNKBIG Security"
+  messagethreadid: 2006
+
+stdout:
+  enabled: false
+
+webhook:
+  enabled: false
+
+redis:
+  enabled: false

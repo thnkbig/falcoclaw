@@ -1,0 +1,160 @@
+# FalcoClaw Agent Behavior Rules
+# Monitors individual agent behavioral patterns and detects anomalies
+# Tuned for OpenClaw multi-agent systems (12-agent topology)
+
+##############################################################################
+# Rules — Unauthorized Communications
+##############################################################################
+- macro: openclaw_process
+  condition: >
+    proc.name in (openclaw, node)
+
+
+- rule: FalcoClaw — Agent SMTP Outbound Without Approval
+  desc: >
+    Detects agent processes opening SMTP connections (port 25, 465, 587).
+    Agents like Karen (Communications) should only send email through
+    approved workflows. Unauthorized SMTP = potential repeat of the
+    Karen incident (unapproved client email).
+  condition: >
+    outbound and
+    (fd.sport = 25 or fd.sport = 465 or fd.sport = 587) and
+    proc.pname in (openclaw, node)
+  output: >
+    CRITICAL: Agent opened SMTP connection without approval chain
+    (process=%proc.name dest=%fd.sip:%fd.sport pid=%proc.pid
+     user=%user.name command=%proc.cmdline)
+  priority: CRITICAL
+  tags: [falcoclaw, agent_behavior, unauthorized_comms, karen_incident]
+
+- rule: FalcoClaw — Agent Outbound to Unknown Domain
+  desc: >
+    Agent processes connecting to destinations not in the approved
+    allowlist. Legitimate destinations include Telegram API, LLM
+    provider APIs, and known service endpoints.
+  condition: >
+    outbound and
+    proc.pname in (openclaw, node) and
+    not fd.sip.name in (api.telegram.org, api.openai.com,
+      api.anthropic.com, api.minimax.chat, registry.npmjs.org,
+      github.com, objects.githubusercontent.com)
+  output: >
+    WARNING: Agent connected to unlisted destination
+    (process=%proc.name dest=%fd.sip:%fd.sport
+     dest_name=%fd.sip.name pid=%proc.pid command=%proc.cmdline)
+  priority: WARNING
+  tags: [falcoclaw, agent_behavior, network_anomaly]
+
+##############################################################################
+# Rules — Agent File System Anomalies
+##############################################################################
+
+- rule: FalcoClaw — Agent Writing Outside Workspace
+  desc: >
+    Agent processes should only write within their designated workspace
+    directories. Writes to system paths, other agent workspaces, or
+    config directories indicate compromise or misconfiguration.
+  condition: >
+    open_write and
+    proc.pname in (openclaw, node) and
+    not fd.name startswith "/home/" and
+    not fd.name startswith "/tmp/" and
+    not fd.name startswith "/var/log/"
+  output: >
+    HIGH: Agent writing outside designated workspace
+    (process=%proc.name file=%fd.name pid=%proc.pid
+     user=%user.name command=%proc.cmdline)
+  priority: WARNING
+  tags: [falcoclaw, agent_behavior, file_anomaly]
+
+- rule: FalcoClaw — Cross-Agent Memory Access
+  desc: >
+    One agent's process accessing another agent's MEMORY.md or workspace.
+    Agents should only read/write their own memory files unless
+    explicitly coordinated through SHARED-STATE.md.
+  condition: >
+    (open_read or open_write) and
+    fd.name contains "MEMORY.md" and
+    proc.pname in (openclaw, node)
+
+
+  output: >
+    WARNING: Potential cross-agent memory access
+    (process=%proc.name file=%fd.name pid=%proc.pid
+     parent=%proc.pname command=%proc.cmdline)
+  priority: WARNING
+  tags: [falcoclaw, agent_behavior, cross_agent_access]
+
+- rule: FalcoClaw — SHARED-STATE.md Rapid Writes
+  desc: >
+    SHARED-STATE.md being written more than expected may indicate
+    a coordination loop, cache invalidation storm, or an agent
+    attempting to manipulate shared context.
+  condition: >
+    open_write and
+    fd.name contains "SHARED-STATE.md" and
+    proc.pname in (openclaw, node)
+  output: >
+    NOTICE: SHARED-STATE.md write event
+    (process=%proc.name file=%fd.name pid=%proc.pid
+     user=%user.name)
+  priority: NOTICE
+  tags: [falcoclaw, agent_behavior, shared_state_write]
+
+##############################################################################
+# Rules — Heartbeat Anomalies
+##############################################################################
+
+- rule: FalcoClaw — Agent Heartbeat File Stale
+  desc: >
+    Heartbeat files not being updated may indicate an agent has gone
+    silent (like the Vision incident). This rule fires when HEARTBEAT.md
+    is read but not written within the expected interval.
+    Note: Staleness detection requires external cron + Falco correlation.
+  condition: >
+    open_read and
+    fd.name contains "HEARTBEAT.md" and
+    not openclaw_process
+  output: >
+    NOTICE: HEARTBEAT.md read by non-agent process (health check?)
+    (process=%proc.name file=%fd.name pid=%proc.pid)
+  priority: NOTICE
+  tags: [falcoclaw, agent_behavior, heartbeat_monitor]
+
+##############################################################################
+# Rules — Skill/Plugin Execution
+##############################################################################
+
+- rule: FalcoClaw — Skill Process Spawned Child
+  desc: >
+    ClawHub skills spawning child processes may indicate malicious
+    skill behavior (ref: ClawHavoc campaign, 341+ malicious skills
+    deploying AMOS infostealer). Skills should not need to spawn
+    subprocesses in most cases.
+  condition: >
+    spawned_process and
+    proc.aname[2] in (openclaw, node) and
+    proc.pname != "openclaw" and
+    proc.name in (bash, sh, python, python3, node, ruby, perl)
+  output: >
+    CRITICAL: Skill spawned subprocess
+    (skill_parent=%proc.pname child=%proc.name command=%proc.cmdline
+     pid=%proc.pid grandparent=%proc.aname[2])
+  priority: CRITICAL
+  tags: [falcoclaw, supply_chain, clawhub_malware, skill_exec]
+
+- rule: FalcoClaw — npm Install During Runtime
+  desc: >
+    npm install running during agent operation (not during setup)
+    may indicate a skill dynamically pulling dependencies, which
+    is a known supply chain attack vector.
+  condition: >
+    spawned_process and
+    proc.name = "npm" and
+    proc.cmdline contains "install"
+  output: >
+    HIGH: npm install executed during runtime
+    (user=%user.name command=%proc.cmdline pid=%proc.pid
+     parent=%proc.pname)
+  priority: WARNING
+  tags: [falcoclaw, supply_chain, runtime_install]
