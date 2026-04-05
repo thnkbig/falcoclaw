@@ -76,7 +76,8 @@ jobs:
       - name: Get latest tag and calculate new version
         id: tag
         run: |
-          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          [ -z "$latest_tag" ] && latest_tag="v0.0.0"
           echo "Latest tag: $latest_tag"
 
           version=${latest_tag#v}
@@ -120,12 +121,90 @@ jobs:
           echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
           echo "increment_type=$increment_type" >> $GITHUB_OUTPUT
 
-      - name: Create Tag
-        if: github.event_name == 'push' || github.event.inputs.increment_type != ''
+      - name: Generate changelog
+        id: changelog
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git tag -a ${{ steps.tag.outputs.new_tag }} -m "Release ${{ steps.tag.outputs.new_tag }} via GitHub Actions"
-          git push origin ${{ steps.tag.outputs.new_tag }}
+          new_tag=${{ steps.tag.outputs.new_tag }}
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          echo "# Changelog for $new_tag" > CHANGELOG_TEMP.md
+          echo "" >> CHANGELOG_TEMP.md
+          echo "## What's Changed" >> CHANGELOG_TEMP.md
+          echo "" >> CHANGELOG_TEMP.md
+
+          if [ -n "$latest_tag" ]; then
+            features=$(git log ${latest_tag}..HEAD --pretty=format:"- %s (%h)" --grep="^feat" --grep="^feature" -i)
+            if [ -n "$features" ]; then
+              echo "### 🚀 Features" >> CHANGELOG_TEMP.md
+              echo "$features" >> CHANGELOG_TEMP.md
+              echo "" >> CHANGELOG_TEMP.md
+            fi
+
+            fixes=$(git log ${latest_tag}..HEAD --pretty=format:"- %s (%h)" --grep="^fix" --grep="^bugfix" -i)
+            if [ -n "$fixes" ]; then
+              echo "### 🐛 Bug Fixes" >> CHANGELOG_TEMP.md
+              echo "$fixes" >> CHANGELOG_TEMP.md
+              echo "" >> CHANGELOG_TEMP.md
+            fi
+
+            docs=$(git log ${latest_tag}..HEAD --pretty=format:"- %s (%h)" --grep="^docs" --grep="^doc:" -i)
+            if [ -n "$docs" ]; then
+              echo "### 📚 Documentation" >> CHANGELOG_TEMP.md
+              echo "$docs" >> CHANGELOG_TEMP.md
+              echo "" >> CHANGELOG_TEMP.md
+            fi
+
+            other=$(git log ${latest_tag}..HEAD --pretty=format:"- %s (%h)" | grep -viE "^- (feat|feature|fix|bugfix|docs|doc:)" || true)
+            if [ -n "$other" ]; then
+              echo "### 🔧 Other Changes" >> CHANGELOG_TEMP.md
+              echo "$other" >> CHANGELOG_TEMP.md
+              echo "" >> CHANGELOG_TEMP.md
+            fi
+          else
+            echo "Initial release" >> CHANGELOG_TEMP.md
+          fi
+
+          if [ "${{ steps.breaking.outputs.breaking }}" == "true" ]; then
+            echo "## ⚠️ Breaking Changes" >> CHANGELOG_TEMP.md
+            echo "" >> CHANGELOG_TEMP.md
+            echo "This release contains breaking changes. Please review the changes carefully before upgrading." >> CHANGELOG_TEMP.md
+            echo "" >> CHANGELOG_TEMP.md
+          fi
+
+          echo "## Full Changelog" >> CHANGELOG_TEMP.md
+          if [ -n "$latest_tag" ]; then
+            echo "[Compare with $latest_tag](https://github.com/${{ github.repository }}/compare/${latest_tag}...${new_tag})" >> CHANGELOG_TEMP.md
+          else
+            echo "[View commits in $new_tag](https://github.com/${{ github.repository }}/commits/${new_tag})" >> CHANGELOG_TEMP.md
+          fi
+
+      - name: Create and push tag
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          new_tag=${{ steps.tag.outputs.new_tag }}
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a $new_tag -m "Release $new_tag - ${{ steps.tag.outputs.increment_type }} version bump"
+          git push origin $new_tag
+
+          echo "✅ Successfully created and pushed tag: $new_tag"
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          new_tag=${{ steps.tag.outputs.new_tag }}
+
+          prerelease="false"
+          if [[ "$new_tag" =~ ^v0\. ]]; then
+            prerelease="true"
+          fi
+
+          gh release create $new_tag \
+            --title "Release $new_tag" \
+            --notes-file CHANGELOG_TEMP.md \
+            --prerelease=$prerelease \
+            --draft=false
