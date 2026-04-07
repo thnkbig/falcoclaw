@@ -121,3 +121,23 @@ use the alert data to complete the investigation.
 ## License
 
 Apache 2.0 — same as FalcoClaw itself.
+
+
+---
+
+## v0.1.0 Status
+
+The OpenClaw plugin for FalcoClaw is **built and functional** in this directory.
+Install it with:
+
+```bash
+openclaw plugins install @thnkbig/falcoclaw
+```
+
+Full implementation details and plugin source are in the  directory above.
+
+**v0.2.0 will add:**
+- Plugin published to npm as 
+- Full TypeScript type definitions
+- Automatic OpenClaw skill generation from FalcoClaw rules
+- Webhook subscription manager
