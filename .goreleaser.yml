@@ -42,6 +42,7 @@ dockers:
     goos: linux
     goarch: amd64
     dockerfile: Dockerfile
+    context: .
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.source=https://github.com/thnkbig/FalcoClaw"
@@ -54,6 +55,7 @@ dockers:
     goos: linux
     goarch: arm64
     dockerfile: Dockerfile
+    context: .
     build_flag_templates:
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.source=https://github.com/thnkbig/FalcoClaw"
