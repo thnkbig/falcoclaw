@@ -1,0 +1,21 @@
+{
+  "id": "@thnkbig/falcoclaw",
+  "name": "FalcoClaw",
+  "description": "Runtime security integration for FalcoClaw. Query alerts, trigger response actions, and receive investigation dispatches.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "endpoint": {
+        "type": "string",
+        "description": "FalcoClaw server URL (default: http://localhost:2804)",
+        "default": "http://localhost:2804"
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Optional API key for FalcoClaw auth (if configured)"
+      }
+    }
+  }
+}
