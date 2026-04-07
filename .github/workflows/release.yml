@@ -45,3 +45,35 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Workaround: goreleaser v2.15 creates manifest list with wrong arch labels.
+      # Re-create manifest correctly using docker manifest.
+      - name: Fix and push multi-arch manifest
+        run: |
+          VERSION="${TAG#v}"
+          echo "Version: $VERSION"
+          
+          # Fetch the pushed image digests
+          AMD64_DIGEST=$(docker manifest inspect ghcr.io/thnkbig/falcoclaw:${VERSION}-amd64 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['manifests'][0]['digest'])" 2>/dev/null || echo "failed")
+          ARM64_DIGEST=$(docker manifest inspect ghcr.io/thnkbig/falcoclaw:${VERSION}-arm64 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['manifests'][0]['digest'])" 2>/dev/null || echo "failed")
+          
+          echo "amd64 digest: $AMD64_DIGEST"
+          echo "arm64 digest: $ARM64_DIGEST"
+          
+          # Create and push versioned manifest with CORRECT architecture labels
+          docker manifest create \
+            --amend ghcr.io/thnkbig/falcoclaw:${VERSION} \
+            ghcr.io/thnkbig/falcoclaw:${VERSION}-amd64@${AMD64_DIGEST} \
+            ghcr.io/thnkbig/falcoclaw:${VERSION}-arm64@${ARM64_DIGEST} 2>/dev/null || true
+          
+          docker manifest create \
+            --amend ghcr.io/thnkbig/falcoclaw:latest \
+            ghcr.io/thnkbig/falcoclaw:${VERSION}-amd64@${AMD64_DIGEST} \
+            ghcr.io/thnkbig/falcoclaw:${VERSION}-arm64@${ARM64_DIGEST} 2>/dev/null || true
+          
+          docker manifest push ghcr.io/thnkbig/falcoclaw:${VERSION}
+          docker manifest push ghcr.io/thnkbig/falcoclaw:latest
+          
+          echo "Manifests fixed and pushed"
+        env:
+          TAG: ${{ github.ref_name }}
