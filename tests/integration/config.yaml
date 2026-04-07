@@ -1,0 +1,21 @@
+# FalcoClaw integration test configuration
+server:
+  host: 0.0.0.0
+  port: 2804
+  log_level: debug
+  log_file: /tmp/falcoclaw.log
+
+rules:
+  files:
+    - tests/integration/rules.yaml
+  check_interval: 5
+
+webhook:
+  enabled: true
+  port: 2804
+
+falcosidekick:
+  enabled: true
+  listen: 0.0.0.0:2803
+
+dry_run: true

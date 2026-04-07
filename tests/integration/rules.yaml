@@ -1,0 +1,56 @@
+rules:
+  - name: test_shell_spawn
+    priority: CRITICAL
+    match:
+      rule: Run shell
+      tags: ["agent", "shell"]
+    actions:
+      - actionner: agent_notify
+        params:
+          message: "Shell spawned by agent"
+        reason: "Agent spawned shell process"
+    tags:
+      - test
+      - agent
+
+  - name: test_sensitive_file
+    priority: ERROR
+    match:
+      rule: Read sensitive file
+      tags: ["linux", "credential"]
+    actions:
+      - actionner: agent_notify
+        params:
+          channel: security-alerts
+        reason: "Sensitive file access detected"
+    tags:
+      - test
+      - linux
+
+  - name: test_crypto_miner
+    priority: EMERGENCY
+    match:
+      rule: Crypto miner
+      tags: ["malware", "crypto"]
+    actions:
+      - actionner: kill
+        params:
+          signal: SIGKILL
+        reason: "Cryptocurrency miner detected"
+    tags:
+      - test
+      - malware
+
+  - name: test_network_anon
+    priority: WARNING
+    match:
+      rule: Network connection to anonymous
+      tags: ["network", "tor"]
+    actions:
+      - actionner: block_ip
+        params:
+          duration: 3600
+        reason: "Outbound connection to anonymous network"
+    tags:
+      - test
+      - network

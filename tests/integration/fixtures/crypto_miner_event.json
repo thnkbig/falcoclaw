@@ -1,0 +1,19 @@
+{
+  "uuid": "00000000-0000-0000-0000-000000000002",
+  "time": "2026-04-07T02:01:00.000000000Z",
+  "rule": "Crypto miner",
+  "priority": "EMERGENCY",
+  "source": "falco",
+  "hostname": "prod-server-01",
+  "output": "Crypto miner detected: stratum+tcp://pool.example.com:3333 PID 67890",
+  "output_fields": {
+    "proc.name": "xmrig",
+    "proc.pid": 67890,
+    "fd.sockname": "192.168.1.100:44444",
+    "fd.rip": "203.0.113.50:3333"
+  },
+  "tags": [
+    "malware",
+    "crypto"
+  ]
+}

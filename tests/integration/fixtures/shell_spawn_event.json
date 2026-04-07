@@ -1,0 +1,20 @@
+{
+  "uuid": "00000000-0000-0000-0000-000000000003",
+  "time": "2026-04-07T02:02:00.000000000Z",
+  "rule": "Run shell",
+  "priority": "CRITICAL",
+  "source": "falco",
+  "hostname": "ai-agent-node-01",
+  "output": "Critical program spawned shell: python3 PID 99999 by user nobody on ai-agent-node-01",
+  "output_fields": {
+    "proc.name": "python3",
+    "proc.pid": 99999,
+    "user.name": "nobody",
+    "proc.aname[0]": "bash",
+    "container.id": "abc123def456"
+  },
+  "tags": [
+    "agent",
+    "shell"
+  ]
+}
