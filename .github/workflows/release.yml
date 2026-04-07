@@ -23,43 +23,10 @@ jobs:
           go-version: '1.22'
           cache: true
 
-      - name: Build
-        run: |
-          VERSION="${{ github.ref_name }}"
-          CGO_ENABLED=0 go build \
-            -ldflags "-s -w -X github.com/thnkbig/falcoclaw/cmd.Version=${VERSION} -X github.com/thnkbig/falcoclaw/cmd.GitCommit=$GITHUB_SHA" \
-            -o falcoclaw .
-
-      - name: Package
-        run: |
-          VERSION="${{ github.ref_name }}"
-          FILENAME="falcoclaw_${VERSION}_linux_amd64.tar.gz"
-          tar -czf "$FILENAME" falcoclaw
-          sha256sum "$FILENAME" > checksums.txt
-          echo "Created $FILENAME"
-          ls -la *.tar.gz checksums.txt
-
-      - name: Create draft release
-        uses: softprops/action-gh-release@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
         with:
-          draft: true
-          tag: ${{ github.ref_name }}
-          name: "FalcoClaw ${{ github.ref_name }}"
-          files: |
-            falcoclaw_*.tar.gz
-            checksums.txt
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  docker:
-    name: Docker Image (amd64)
-    runs-on: ubuntu-latest
-    needs: release
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
+          platforms: linux/amd64,linux/arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -71,17 +38,74 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
+      - name: Build binaries
+        run: |
+          VERSION="${{ github.ref_name }}"
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            -ldflags "-s -w -X github.com/thnkbig/falcoclaw/cmd.Version=${VERSION} -X github.com/thnkbig/falcoclaw/cmd.GitCommit=$GITHUB_SHA" \
+            -o dist/falcoclaw_linux_amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build \
+            -ldflags "-s -w -X github.com/thnkbig/falcoclaw/cmd.Version=${VERSION} -X github.com/thnkbig/falcoclaw/cmd.GitCommit=$GITHUB_SHA" \
+            -o dist/falcoclaw_linux_arm64 .
+          echo "Binaries built"
+          ls -la dist/
+
+      - name: Package binaries
+        run: |
+          VERSION="${{ github.ref_name }}"
+          cd dist
+          tar -czf falcoclaw_${VERSION}_linux_amd64.tar.gz falcoclaw_linux_amd64
+          tar -czf falcoclaw_${VERSION}_linux_arm64.tar.gz falcoclaw_linux_arm64
+          sha256sum falcoclaw_${VERSION}_linux_amd64.tar.gz falcoclaw_${VERSION}_linux_arm64.tar.gz > checksums.txt
+          echo "Packaged"
+          ls -la
+
+      - name: Build Docker multi-arch
+        uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/thnkbig/falcoclaw:${{ github.ref_name }}
-            ghcr.io/thnkbig/falcoclaw:latest
+            ghcr.io/thnkbig/falcoclaw:${{ github.ref_name }}-amd64
+            ghcr.io/thnkbig/falcoclaw:latest-amd64
+            ghcr.io/thnkbig/falcoclaw:${{ github.ref_name }}-arm64
+            ghcr.io/thnkbig/falcoclaw:latest-arm64
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=$GITHUB_SHA
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create manifest and push multi-arch tags
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Push the versioned manifest
+          docker manifest create ghcr.io/thnkbig/falcoclaw:${VERSION} \
+            ghcr.io/thnkbig/falcoclaw:${VERSION}-amd64 \
+            ghcr.io/thnkbig/falcoclaw:${VERSION}-arm64
+          docker manifest push ghcr.io/thnkbig/falcoclaw:${VERSION}
+          
+          # Push the latest manifest
+          docker manifest create ghcr.io/thnkbig/falcoclaw:latest \
+            ghcr.io/thnkbig/falcoclaw:latest-amd64 \
+            ghcr.io/thnkbig/falcoclaw:latest-arm64
+          docker manifest push ghcr.io/thnkbig/falcoclaw:latest
+          
+          echo "Manifests pushed"
+          docker manifest inspect ghcr.io/thnkbig/falcoclaw:${VERSION}
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag: ${{ github.ref_name }}
+          name: "FalcoClaw ${{ github.ref_name }}"
+          files: |
+            dist/falcoclaw_*_linux_amd64.tar.gz
+            dist/falcoclaw_*_linux_arm64.tar.gz
+            dist/checksums.txt
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
